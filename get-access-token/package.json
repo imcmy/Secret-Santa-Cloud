@@ -1,0 +1,20 @@
+{
+    "name": "get-access-token",
+    "dependencies": [],
+    "extensions": {
+        "uni-cloud-jql": []
+    },
+    "cloudfunction-config": {
+        "triggers": [
+            {
+                "name": "myTrigger",
+                "type": "timer",
+                "config": "38 22 */1 * * * *"
+            }
+        ],
+        "memorySize": 512,
+        "timeout": 5,
+        "path": "",
+        "runtime": "Nodejs8"
+    }
+}
