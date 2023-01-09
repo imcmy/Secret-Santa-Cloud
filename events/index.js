@@ -77,16 +77,18 @@ exports.main = async (event, context) => {
             var transaction = await uniCloud.database().startTransaction()
             try {
                 var _group = await groups.doc(params.group).field(
-                    'group_manager,group_members,allow_member_create,audit_create,waiting_events,group_events').get({
+                    'group_manager,group_members,allow_member_create,audit_create,waiting_events,group_events'
+                    ).get({
                     getOne: true
                 })
-                if (!(_group.data.group_manager === user.data._id || (_group.data.allow_member_create && _group.data
+                if (!(_group.data.group_manager === user.data._id || (_group.data.allow_member_create && _group
+                        .data
                         .group_members.includes(user.data._id))))
                     return {
                         errCode: 0x32,
                         errMsg: "Not allowed to create"
                     }
-                
+
                 groups = transaction.collection('groups')
                 events = transaction.collection('events')
                 res = await events.add({
@@ -120,5 +122,14 @@ exports.main = async (event, context) => {
 
             await transaction.commit()
             return res
+        case 'query':
+            var event = await events.where({
+                    _id: params.event_id
+                }).field('event_name,event_description,event_start,event_roll,event_end,event_creator')
+                .getTemp()
+            event = await JQL.collection(event, 'users').get()
+            event.data = event.data[0]
+            event.data.event_creator = event.data.event_creator[0]['nickname']
+            return event
     }
 };
