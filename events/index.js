@@ -78,7 +78,7 @@ exports.main = async (event, context) => {
             try {
                 var _group = await groups.doc(params.group).field(
                     'group_manager,group_members,allow_member_create,audit_create,waiting_events,group_events'
-                    ).get({
+                ).get({
                     getOne: true
                 })
                 if (!(_group.data.group_manager === user.data._id || (_group.data.allow_member_create && _group
@@ -131,5 +131,38 @@ exports.main = async (event, context) => {
             event.data = event.data[0]
             event.data.event_creator = event.data.event_creator[0]['nickname']
             return event
+        case 'audit':
+            var transaction = await uniCloud.database().startTransaction()
+            try {
+                var _group = await groups.doc(params.group_id).field('waiting_events').get({
+                    getOne: true
+                })
+                var index = _group.data.waiting_events.indexOf(params.event_id);
+                if (index !== -1) {
+                    _group.data.waiting_events.splice(index, 1);
+                }
+
+                events = transaction.collection('events')
+                groups = transaction.collection('groups')
+                await events.doc(params.event_id).update({
+                    event_audited: params.result === 'pass'
+                })
+                if (params.result === 'pass') {
+                    await groups.doc(params.group_id).update({
+                        waiting_events: _group.data.waiting_events,
+                        group_events: _.push(params.event_id)
+                    })
+                } else if (params.result === 'fail') {
+                    await groups.doc(params.group_id).update({
+                        waiting_events: _group.data.waiting_events
+                    })
+                }
+            } catch (e) {
+                await transaction.rollback()
+                return e
+            }
+
+            await transaction.commit()
+            return res
     }
 };
