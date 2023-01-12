@@ -11,7 +11,7 @@ const secret = ''
 const validateString = async (configurations, openid, content) => {
     let checkUrl = 'https://api.weixin.qq.com/wxa/msg_sec_check'
     let id = '63a8eed3e1a35c86f45ed885'
-    
+
     let config = await configurations.doc(id).get({
         getOne: true
     })
@@ -175,12 +175,19 @@ exports.main = async (event, context) => {
             var manager = await users.doc(_groups.data[0].group_manager).field('nickname').get({
                 getOne: true
             })
+            var isManager = _groups.data[0].group_manager === user.data._id
+
             res.group = _groups.data[0]
             res.group.group_manager = manager.data.nickname
             res.group.group_members = res.group.group_members.length
-            res.group.waiting_members = res.group.waiting_members.length
             res.group.group_events = res.group.group_events.length
-            res.group.waiting_events = res.group.waiting_events.length
+            if (isManager) {
+                res.group.waiting_members = res.group.waiting_members.length
+                res.group.waiting_events = res.group.waiting_events.length
+            } else {
+                delete res.group['waiting_members']
+                delete res.group['waiting_events']
+            }
 
             return res
         case 'load_groups_allow_create':
@@ -188,7 +195,9 @@ exports.main = async (event, context) => {
                 groups: [],
                 groups_id: []
             }
-            var _groups = await groups.where(`(group_members == "${user.data._id}" && allow_member_create == ${true}) || group_manager == "${user.data._id}"`)
+            var _groups = await groups.where(
+                    `(group_members == "${user.data._id}" && allow_member_create == ${true}) || group_manager == "${user.data._id}"`
+                    )
                 .get({
                     getCount: true
                 })
