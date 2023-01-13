@@ -30,9 +30,9 @@ exports.main = async (event, context) => {
         event,
         context
     })
-    const users = JQL.collection('users')
-    const groups = JQL.collection('groups')
-    const events = JQL.collection('events')
+    var users = JQL.collection('users')
+    var groups = JQL.collection('groups')
+    var events = JQL.collection('events')
     const configurations = JQL.collection('configurations')
 
     let source = context.SOURCE
@@ -127,60 +127,83 @@ exports.main = async (event, context) => {
                 }
             }
 
-            if (group.data.audit_join) {
-                group.data.waiting_members.push(user.data._id)
-                await groups.doc(group.data._id).update({
-                    waiting_members: group.data.waiting_members
-                })
-                return {
-                    errCode: 0x25,
-                    errMsg: "Need audit"
+            var transaction = await uniCloud.database().startTransaction()
+            users = transaction.collection('users')
+            groups = transaction.collection('groups')
+            try {
+                if (group.data.audit_join) {
+                    await groups.doc(group.data._id).update({
+                        waiting_members: _.push(user.data._id)
+                    })
+                    await transaction.commit()
+                    return {
+                        errCode: 0x25,
+                        errMsg: "Need audit"
+                    }
                 }
-            }
 
-            user.data.groups.push(group.data._id)
-            var res = await users.doc(user.data._id).update({
-                groups: user.data.groups
-            })
-            group.data.group_members.push(user.data._id)
-            res = await groups.doc(group.data._id).update({
-                group_members: group.data.group_members
-            })
-            return res
-        case 'load_members':
-            var group_members = await groups.where(
-                    `_id == "${params.group_id}" && group_members == "${user.data._id}"`).field('group_members')
-                .getTemp()
-            var members = await JQL.collection(group_members, 'users').get()
-            members.data = members.data[0].group_members.map(o => ['_id', 'nickname'].reduce((acc, curr) => {
-                acc[curr] = o[curr];
-                return acc;
-            }, {}));
-            return members
-        case 'load_events':
-            var group_events = await groups.where(
-                    `_id == "${params.group_id}" && group_members == "${user.data._id}"`).field('group_events')
-                .getTemp()
-            var event = await JQL.collection(group_events, 'events').get()
-            event.data = event.data[0].group_events.map(o => ['_id', 'event_name', 'event_description',
-                'event_rolled', 'event_ended'
-            ].reduce((acc, curr) => {
-                acc[curr] = o[curr];
-                return acc;
-            }, {}));
-            return event
-        case 'load_waiting_events':
-            var waiting_events = await groups.where(
-                    `_id == "${params.group_id}" && group_manager == "${user.data._id}"`).field(
-                    'waiting_events')
-                .getTemp()
-            var event = await JQL.collection(waiting_events, 'events').get()
-            event.data = event.data[0].waiting_events.map(o => ['_id', 'event_name', 'event_description',
-                'event_start'
-            ].reduce((acc, curr) => {
-                acc[curr] = o[curr];
-                return acc;
-            }, {}));
-            return event
+                var res = await users.doc(user.data._id).update({
+                    groups: _.push(group.data._id)
+                })
+                res = await groups.doc(group.data._id).update({
+                    group_members: _.push(user.data._id)
+                })
+
+                await transaction.commit()
+                return res
+            } catch (e) {
+                await transaction.rollback()
+                return e
+            }
+            case 'load_members':
+                var group_members = await groups.where(
+                        `_id == "${params.group_id}" && group_members == "${user.data._id}"`).field(
+                        'group_members')
+                    .getTemp()
+                var members = await JQL.collection(group_members, 'users').get()
+                members.data = members.data[0].group_members.map(o => ['_id', 'nickname'].reduce((acc,
+                    curr) => {
+                    acc[curr] = o[curr];
+                    return acc;
+                }, {}));
+                return members
+            case 'load_events':
+                var group_events = await groups.where(
+                        `_id == "${params.group_id}" && group_members == "${user.data._id}"`).field(
+                        'group_events')
+                    .getTemp()
+                var event = await JQL.collection(group_events, 'events').get()
+                event.data = event.data[0].group_events.map(o => ['_id', 'event_name', 'event_description',
+                    'event_rolled', 'event_ended'
+                ].reduce((acc, curr) => {
+                    acc[curr] = o[curr];
+                    return acc;
+                }, {}));
+                return event
+            case 'load_waiting_members':
+                var waiting_members = await groups.where(
+                        `_id == "${params.group_id}" && group_manager == "${user.data._id}"`).field(
+                        'waiting_members')
+                    .getTemp()
+                var members = await JQL.collection(waiting_members, 'users').get()
+                members.data = members.data[0].waiting_members.map(o => ['_id', 'nickname'].reduce((acc,
+                    curr) => {
+                    acc[curr] = o[curr];
+                    return acc;
+                }, {}));
+                return members
+            case 'load_waiting_events':
+                var waiting_events = await groups.where(
+                        `_id == "${params.group_id}" && group_manager == "${user.data._id}"`).field(
+                        'waiting_events')
+                    .getTemp()
+                var event = await JQL.collection(waiting_events, 'events').get()
+                event.data = event.data[0].waiting_events.map(o => ['_id', 'event_name', 'event_description',
+                    'event_start'
+                ].reduce((acc, curr) => {
+                    acc[curr] = o[curr];
+                    return acc;
+                }, {}));
+                return event
     }
 };
