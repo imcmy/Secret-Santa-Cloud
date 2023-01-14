@@ -164,5 +164,38 @@ exports.main = async (event, context) => {
 
             await transaction.commit()
             return res
+        case 'list':
+            let eventRecords = {
+                notStarted: [],
+                underway: [],
+                started: [],
+                rolled: [],
+                ended: []
+            }
+            let records = await events.where({
+                event_audited: true,
+                event_group: _.in(user.data.groups)
+            }).field('event_name,event_group,event_start,event_roll,event_end,event_participates').getTemp()
+            records = await JQL.collection(records, 'groups').get()
+            records.data.forEach((item, index, _) => {
+                item.event_group_name = item.event_group[0].group_name
+                item.event_group = item.event_group[0]._id
+                if (item.event_participates.includes(user.data._id)) {
+                    if (item.event_start > currTime)
+                        eventRecords.notStarted.push(item)
+                    else if (item.event_start <= currTime && currTime <= item.event_roll)
+                        eventRecords.started.push(item)
+                    else if (item.event_roll <= currTime && currTime <= item.event_end)
+                        eventRecords.rolled.push(item)
+                    else
+                        eventRecords.ended.push(item)
+                } else {
+                    if (item.event_start > currTime)
+                        eventRecords.notStarted.push(item)
+                    else if (item.event_start <= currTime && currTime <= item.event_roll)
+                        eventRecords.underway.push(item)
+                }
+            })
+            return eventRecords
     }
 };

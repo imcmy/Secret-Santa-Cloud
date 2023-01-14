@@ -205,5 +205,38 @@ exports.main = async (event, context) => {
                     return acc;
                 }, {}));
                 return event
+            case 'audit':
+                var transaction = await uniCloud.database().startTransaction()
+                try {
+                    var _group = await groups.doc(params.group_id).field('waiting_members').get({
+                        getOne: true
+                    })
+                    var index = _group.data.waiting_members.indexOf(params.user_id);
+                    if (index !== -1) {
+                        _group.data.waiting_members.splice(index, 1);
+                    }
+            
+                    users = transaction.collection('users')
+                    groups = transaction.collection('groups')
+                    if (params.result === 'accept') {
+                        await groups.doc(params.group_id).update({
+                            waiting_members: _group.data.waiting_members,
+                            group_members: _.push(params.user_id)
+                        })
+                        await users.doc(params.user_id).update({
+                            groups: _.push(params.group_id)
+                        })
+                    } else if (params.result === 'reject') {
+                        await groups.doc(params.group_id).update({
+                            waiting_members: _group.data.waiting_members
+                        })
+                    }
+                } catch (e) {
+                    await transaction.rollback()
+                    return e
+                }
+            
+                await transaction.commit()
+                return res
     }
 };
