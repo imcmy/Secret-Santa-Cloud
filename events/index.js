@@ -175,27 +175,63 @@ exports.main = async (event, context) => {
             let records = await events.where({
                 event_audited: true,
                 event_group: _.in(user.data.groups)
-            }).field('event_name,event_group,event_start,event_roll,event_end,event_participates').getTemp()
+            }).field('event_name,event_description,event_group,event_rolled,event_ended,event_start,event_roll,event_end,event_participates').getTemp()
             records = await JQL.collection(records, 'groups').get()
             records.data.forEach((item, index, _) => {
                 item.event_group_name = item.event_group[0].group_name
                 item.event_group = item.event_group[0]._id
                 if (item.event_participates.includes(user.data._id)) {
+                    item.joined = true
+                    delete item.event_participates
                     if (item.event_start > currTime)
                         eventRecords.notStarted.push(item)
-                    else if (item.event_start <= currTime && currTime <= item.event_roll)
+                    else if (!item.event_rolled)
                         eventRecords.started.push(item)
-                    else if (item.event_roll <= currTime && currTime <= item.event_end)
+                    else if (!item.event_ended)
                         eventRecords.rolled.push(item)
                     else
                         eventRecords.ended.push(item)
                 } else {
+                    item.joined = false
+                    delete item.event_participates
                     if (item.event_start > currTime)
                         eventRecords.notStarted.push(item)
-                    else if (item.event_start <= currTime && currTime <= item.event_roll)
+                    else if (!item.event_rolled)
                         eventRecords.underway.push(item)
                 }
             })
             return eventRecords
+        case 'list_one':
+            var event = await events.where({
+                _id: params.event_id,
+                event_audited: true
+            }).field('event_creator,event_start,event_rolled,event_ended,event_participates,event_pairs').getTemp()
+            event = await JQL.collection(event, 'users').get()
+            event.data = event.data[0]
+            event.data.event_creator = event.data.event_creator[0].nickname
+            if (event.data.event_start > currTime) {
+                event.data.step = 0
+                event.data.event_participates = event.data.event_participates.length
+                delete event.data.event_pairs
+            } else if (!event.data.event_rolled) {
+                event.data.step = 1
+                event.data.event_participates = event.data.event_participates.length
+                delete event.data.event_pairs
+            } else if (!event.data.event_ended) {
+                event.data.step = 2
+                // event.data.event_participates = event.data.event_participates.map(o => return o.nickname)
+                delete event.data.event_pairs
+            } else {
+                event.data.step = 3
+            }
+            return event.data
+        case 'join':
+            var event = await events.where({
+                _id: params.event_id,
+                event_audited: true
+            }).update({
+                event_participates: _.push(user.data._id)
+            })
+            console.log(event)
     }
 };
