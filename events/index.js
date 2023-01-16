@@ -175,7 +175,9 @@ exports.main = async (event, context) => {
             let records = await events.where({
                 event_audited: true,
                 event_group: _.in(user.data.groups)
-            }).field('event_name,event_description,event_group,event_rolled,event_ended,event_start,event_roll,event_end,event_participates').getTemp()
+            }).field(
+                'event_name,event_description,event_group,event_rolled,event_ended,event_start,event_roll,event_end,event_participates'
+            ).getTemp()
             records = await JQL.collection(records, 'groups').get()
             records.data.forEach((item, index, _) => {
                 item.event_group_name = item.event_group[0].group_name
@@ -203,9 +205,10 @@ exports.main = async (event, context) => {
             return eventRecords
         case 'list_one':
             var event = await events.where({
-                _id: params.event_id,
-                event_audited: true
-            }).field('event_creator,event_start,event_rolled,event_ended,event_participates,event_pairs').getTemp()
+                    _id: params.event_id,
+                    event_audited: true
+                }).field('event_creator,event_start,event_rolled,event_ended,event_participates,event_pairs')
+                .getTemp()
             event = await JQL.collection(event, 'users').get()
             event.data = event.data[0]
             event.data.event_creator = event.data.event_creator[0].nickname
@@ -229,9 +232,34 @@ exports.main = async (event, context) => {
             var event = await events.where({
                 _id: params.event_id,
                 event_audited: true
-            }).update({
-                event_participates: _.push(user.data._id)
+            }).field('event_participates').get({
+                getOne: true
             })
-            console.log(event)
+            event.data.event_participates.push(user.data._id)
+            await events.where({
+                _id: params.event_id,
+                event_audited: true
+            }).update({
+                event_participates: event.data.event_participates
+            })
+            return event.data.event_participates.length
+        case 'leave':
+            var event = await events.where({
+                _id: params.event_id,
+                event_audited: true
+            }).field('event_participates').get({
+                getOne: true
+            })
+            var index = event.data.event_participates.indexOf(user.data._id);
+            if (index !== -1) {
+                event.data.event_participates.splice(index, 1);
+            }
+            await events.where({
+                _id: params.event_id,
+                event_audited: true
+            }).update({
+                event_participates: event.data.event_participates
+            })
+            return event.data.event_participates.length
     }
 };
