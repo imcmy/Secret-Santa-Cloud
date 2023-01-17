@@ -1,0 +1,7 @@
+{
+  "name": "roll",
+  "dependencies": {},
+  "extensions": {
+    "uni-cloud-jql": {}
+  }
+}
