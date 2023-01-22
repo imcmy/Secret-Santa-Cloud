@@ -222,10 +222,25 @@ exports.main = async (event, context) => {
                 delete event.data.event_pairs
             } else if (!event.data.event_ended) {
                 event.data.step = 2
-                // event.data.event_participates = event.data.event_participates.map(o => return o.nickname)
-                delete event.data.event_pairs
+                event.data.event_participates = event.data.event_pairs.nicknames
+                event.data.event_pairs = event.data.event_pairs.pairs[user.data._id]
+                var wishlist = await users.doc(event.data.event_pairs.target).field('nickname,wishlist,addresses').get({
+                    getOne: true
+                })
+                for (let i in wishlist.data.addresses) {
+                    var addr = wishlist.data.addresses[i]
+                    if (addr.current) {
+                        wishlist.data.address = addr
+                        break
+                    }
+                }
+                wishlist.data.wishlist = wishlist.data.wishlist.slice(0, 3);
+                delete wishlist.data.addresses
+                event.data.event_pairs.target = wishlist.data
             } else {
                 event.data.step = 3
+                event.data.event_participates = event.data.event_pairs.results
+                delete event.data.event_pairs
             }
             return event.data
         case 'join':
