@@ -211,7 +211,10 @@ exports.main = async (event, context) => {
                 .getTemp()
             event = await JQL.collection(event, 'users').get()
             event.data = event.data[0]
-            event.data.event_creator = event.data.event_creator[0].nickname
+            if (event.data.event_creator.length > 0)
+                event.data.event_creator = event.data.event_creator[0].nickname
+            else
+                event.data.event_creator = '[已注销用户]'
             if (event.data.event_start > currTime) {
                 event.data.step = 0
                 event.data.event_participates = event.data.event_participates.length

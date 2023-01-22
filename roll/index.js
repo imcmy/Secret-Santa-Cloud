@@ -50,6 +50,8 @@ exports.main = async (event, context) => {
         rolling.data[i].event_participates.map(o => {
             event_pairs.results.push(o.nickname)
         })
+        if (event_pairs.results.length > 0)
+            event_pairs.results.push(event_pairs.results[0])
         await events.doc(rolling.data[i]._id).update({
             event_rolled: true,
             event_pairs: event_pairs
