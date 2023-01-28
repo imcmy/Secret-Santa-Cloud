@@ -155,88 +155,128 @@ exports.main = async (event, context) => {
                 await transaction.rollback()
                 return e
             }
-            case 'load_members':
-                var group_members = await groups.where(
-                        `_id == "${params.group_id}" && group_members == "${user.data._id}"`).field(
-                        'group_members')
-                    .getTemp()
-                var members = await JQL.collection(group_members, 'users').get()
-                members.data = members.data[0].group_members.map(o => ['_id', 'nickname'].reduce((acc,
-                    curr) => {
-                    acc[curr] = o[curr];
-                    return acc;
-                }, {}));
-                return members
-            case 'load_events':
-                var group_events = await groups.where(
-                        `_id == "${params.group_id}" && group_members == "${user.data._id}"`).field(
-                        'group_events')
-                    .getTemp()
-                var event = await JQL.collection(group_events, 'events').get()
-                event.data = event.data[0].group_events.map(o => ['_id', 'event_name', 'event_description',
-                    'event_rolled', 'event_ended'
-                ].reduce((acc, curr) => {
-                    acc[curr] = o[curr];
-                    return acc;
-                }, {}));
-                return event
-            case 'load_waiting_members':
-                var waiting_members = await groups.where(
-                        `_id == "${params.group_id}" && group_manager == "${user.data._id}"`).field(
-                        'waiting_members')
-                    .getTemp()
-                var members = await JQL.collection(waiting_members, 'users').get()
-                members.data = members.data[0].waiting_members.map(o => ['_id', 'nickname'].reduce((acc,
-                    curr) => {
-                    acc[curr] = o[curr];
-                    return acc;
-                }, {}));
-                return members
-            case 'load_waiting_events':
-                var waiting_events = await groups.where(
-                        `_id == "${params.group_id}" && group_manager == "${user.data._id}"`).field(
-                        'waiting_events')
-                    .getTemp()
-                var event = await JQL.collection(waiting_events, 'events').get()
-                event.data = event.data[0].waiting_events.map(o => ['_id', 'event_name', 'event_description',
-                    'event_start'
-                ].reduce((acc, curr) => {
-                    acc[curr] = o[curr];
-                    return acc;
-                }, {}));
-                return event
-            case 'audit':
-                var transaction = await uniCloud.database().startTransaction()
-                try {
-                    var _group = await groups.doc(params.group_id).field('waiting_members').get({
-                        getOne: true
-                    })
-                    var index = _group.data.waiting_members.indexOf(params.user_id);
-                    if (index !== -1) {
-                        _group.data.waiting_members.splice(index, 1);
-                    }
+            break
+        case 'load_group':
+            var group = await groups.doc(params.group_id).get({
+                getOne: true
+            })
+            group = group.data
             
-                    users = transaction.collection('users')
-                    groups = transaction.collection('groups')
-                    if (params.result === 'accept') {
-                        await groups.doc(params.group_id).update({
-                            waiting_members: _group.data.waiting_members,
-                            group_members: _.push(params.user_id)
-                        })
-                        await users.doc(params.user_id).update({
-                            groups: _.push(params.group_id)
-                        })
-                    } else if (params.result === 'reject') {
-                        await groups.doc(params.group_id).update({
-                            waiting_members: _group.data.waiting_members
-                        })
-                    }
-                } catch (e) {
-                    await transaction.rollback()
-                    return e
+            var manager = await users.doc(group.group_manager).field('nickname').get({
+                getOne: true
+            })
+            var isManager = group.group_manager === user.data._id
+            
+            group.group_manager = manager.data.nickname
+            group.group_members = group.group_members.length
+            group.group_events = group.group_events.length
+            group.is_manager = isManager
+            if (isManager) {
+                group.waiting_members = group.waiting_members.length
+                group.waiting_events = group.waiting_events.length
+            } else {
+                delete group['waiting_members']
+                delete group['waiting_events']
+            }
+            
+            return group
+        case 'load_members':
+            var group_members = await groups.where(
+                    `_id == "${params.group_id}" && group_members == "${user.data._id}"`).field(
+                    'group_members')
+                .getTemp()
+            var members = await JQL.collection(group_members, 'users').get()
+            members.data = members.data[0].group_members.map(o => ['_id', 'nickname'].reduce((acc,
+                curr) => {
+                acc[curr] = o[curr];
+                if (o._id === user.data._id)
+                    acc['is_self'] = true
+                return acc;
+            }, {}));
+            return members
+        case 'load_events':
+            var group_events = await groups.where(
+                    `_id == "${params.group_id}" && group_members == "${user.data._id}"`).field(
+                    'group_events')
+                .getTemp()
+            var event = await JQL.collection(group_events, 'events').get()
+            event.data = event.data[0].group_events.map(o => ['_id', 'event_name', 'event_description',
+                'event_rolled', 'event_ended'
+            ].reduce((acc, curr) => {
+                acc[curr] = o[curr];
+                return acc;
+            }, {}));
+            return event
+        case 'load_waiting_members':
+            var waiting_members = await groups.where(
+                    `_id == "${params.group_id}" && group_manager == "${user.data._id}"`).field(
+                    'waiting_members')
+                .getTemp()
+            var members = await JQL.collection(waiting_members, 'users').get()
+            members.data = members.data[0].waiting_members.map(o => ['_id', 'nickname'].reduce((acc,
+                curr) => {
+                acc[curr] = o[curr];
+                return acc;
+            }, {}));
+            return members
+        case 'load_waiting_events':
+            var waiting_events = await groups.where(
+                    `_id == "${params.group_id}" && group_manager == "${user.data._id}"`).field(
+                    'waiting_events')
+                .getTemp()
+            var event = await JQL.collection(waiting_events, 'events').get()
+            event.data = event.data[0].waiting_events.map(o => ['_id', 'event_name', 'event_description',
+                'event_start'
+            ].reduce((acc, curr) => {
+                acc[curr] = o[curr];
+                return acc;
+            }, {}));
+            return event
+        case 'audit':
+            var transaction = await uniCloud.database().startTransaction()
+            try {
+                var _group = await groups.doc(params.group_id).field('waiting_members').get({
+                    getOne: true
+                })
+                var index = _group.data.waiting_members.indexOf(params.user_id);
+                if (index !== -1) {
+                    _group.data.waiting_members.splice(index, 1);
                 }
-            
-                await transaction.commit()
-                return res
+
+                users = transaction.collection('users')
+                groups = transaction.collection('groups')
+                if (params.result === 'accept') {
+                    await groups.doc(params.group_id).update({
+                        waiting_members: _group.data.waiting_members,
+                        group_members: _.push(params.user_id)
+                    })
+                    await users.doc(params.user_id).update({
+                        groups: _.push(params.group_id)
+                    })
+                } else if (params.result === 'reject') {
+                    await groups.doc(params.group_id).update({
+                        waiting_members: _group.data.waiting_members
+                    })
+                }
+            } catch (e) {
+                await transaction.rollback()
+                return e
+            }
+
+            await transaction.commit()
+            return res
+        case 'transfer':
+            var group = await groups.doc(params.group_id).field('group_manager').get({
+                getOne: true
+            })
+            var new_manager = await users.doc(params.user_id).get({
+                getCount: true
+            })
+            if (new_manager.count === 1 && group.data.group_manager === user.data._id) {
+                await groups.doc(params.group_id).update({
+                    group_manager: params.user_id
+                })
+            }
+            return
     }
 };

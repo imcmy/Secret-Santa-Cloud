@@ -181,6 +181,7 @@ exports.main = async (event, context) => {
             res.group.group_manager = manager.data.nickname
             res.group.group_members = res.group.group_members.length
             res.group.group_events = res.group.group_events.length
+            res.group.is_manager = isManager
             if (isManager) {
                 res.group.waiting_members = res.group.waiting_members.length
                 res.group.waiting_events = res.group.waiting_events.length
