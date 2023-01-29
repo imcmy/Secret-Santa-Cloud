@@ -161,12 +161,12 @@ exports.main = async (event, context) => {
                 getOne: true
             })
             group = group.data
-            
+
             var manager = await users.doc(group.group_manager).field('nickname').get({
                 getOne: true
             })
             var isManager = group.group_manager === user.data._id
-            
+
             group.group_manager = manager.data.nickname
             group.group_members = group.group_members.length
             group.group_events = group.group_events.length
@@ -178,7 +178,7 @@ exports.main = async (event, context) => {
                 delete group['waiting_members']
                 delete group['waiting_events']
             }
-            
+
             return group
         case 'load_members':
             var group_members = await groups.where(
@@ -200,12 +200,19 @@ exports.main = async (event, context) => {
                     'group_events')
                 .getTemp()
             var event = await JQL.collection(group_events, 'events').get()
-            event.data = event.data[0].group_events.map(o => ['_id', 'event_name', 'event_description',
-                'event_rolled', 'event_ended'
-            ].reduce((acc, curr) => {
-                acc[curr] = o[curr];
-                return acc;
-            }, {}));
+            event.data = event.data[0].group_events.map(({
+                _id,
+                event_name,
+                event_description,
+                event_rolled,
+                event_ended
+            }) => ({
+                _id,
+                event_name,
+                event_description,
+                event_rolled,
+                event_ended
+            }))
             return event
         case 'load_waiting_members':
             var waiting_members = await groups.where(
@@ -272,11 +279,62 @@ exports.main = async (event, context) => {
             var new_manager = await users.doc(params.user_id).get({
                 getCount: true
             })
-            if (new_manager.count === 1 && group.data.group_manager === user.data._id) {
+            if (new_manager.affectedDocs === 1 && group.data.group_manager === user.data._id) {
                 await groups.doc(params.group_id).update({
                     group_manager: params.user_id
                 })
             }
-            return
+            return true
+        case 'leave':
+            var transaction = await uniCloud.database().startTransaction()
+            try {
+                var eventQuery = events.where({
+                    event_group: params.group_id,
+                    event_participates: user.data._id
+                }).field('event_rolled,event_ended,event_participates').getTemp()
+                var groupQuery = groups.doc(params.group_id).field('group_members').getTemp({
+                    getOne: true
+                })
+                var res = await JQL.multiSend(eventQuery, groupQuery)
+                
+                var event = res.dataList[0]
+                var group = res.dataList[1]
+                
+                users = transaction.collection('users')
+                groups = transaction.collection('groups')
+                events = transaction.collection('events')
+                for (let idx in event.data) {
+                    if (event.data[idx].event_rolled && !event.data[idx].event_ended)
+                        throw {
+                            errCode: 0x27,
+                            errMsg: "Still in event"
+                        }
+                    var index = event.data[idx].event_participates.indexOf(user.data._id)
+                    if (index !== -1)
+                        event.data[idx].event_participates.splice(index, 1)
+                    await events.doc(event.data[idx]._id).update({
+                        event_participates: event.data[idx].event_participates
+                    })
+                }
+                var index = group.data.group_members.indexOf(user.data._id)
+                if (index !== -1)
+                    group.data.group_members.splice(index, 1)
+                await groups.doc(params.group_id).update({
+                    group_members: group.data.group_members
+                })
+                
+                var index = user.data.groups.indexOf(params.group_id)
+                if (index !== -1)
+                    user.data.groups.splice(index, 1)
+                await users.doc(user.data._id).update({
+                    groups: user.data.groups
+                })
+            } catch (e) {
+                await transaction.rollback()
+                return e
+            }
+
+            await transaction.commit()
+            return true
     }
 };
