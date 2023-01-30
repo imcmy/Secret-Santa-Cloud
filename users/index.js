@@ -34,9 +34,9 @@ exports.main = async (event, context) => {
         event,
         context
     })
-    const users = JQL.collection('users')
-    const groups = JQL.collection('groups')
-    const events = JQL.collection('events')
+    var users = JQL.collection('users')
+    var groups = JQL.collection('groups')
+    var events = JQL.collection('events')
     const configurations = JQL.collection('configurations')
 
     let source = context.SOURCE
@@ -213,6 +213,56 @@ exports.main = async (event, context) => {
                 res.groups_id.push(_groups.data[g]._id)
             }
             return res
-
+        case 'unreg':
+            var transaction = await uniCloud.database().startTransaction()
+            try {
+                var eventQuery = events.where({
+                    event_participates: user.data._id
+                }).field('event_rolled,event_ended,event_participates').getTemp()
+                var groupQuery = groups.where({
+                    group_members: user.data._id
+                }).field('group_manager,group_members').getTemp()
+                var res = await JQL.multiSend(eventQuery, groupQuery)
+                
+                var event = res.dataList[0]
+                var group = res.dataList[1]
+                
+                users = transaction.collection('users')
+                groups = transaction.collection('groups')
+                events = transaction.collection('events')
+                for (let idx in group.data) {
+                    if (group.data[idx].group_manager === user.data._id)
+                        throw {
+                            errCode: 0x13,
+                            errMsg: "Still a manager"
+                        }
+                    var index = group.data[idx].group_members.indexOf(user.data._id)
+                    if (index !== -1)
+                        group.data[idx].group_members.splice(index, 1)
+                    await groups.doc(group.data[idx]._id).update({
+                        group_members: group.data[idx].group_members
+                    })
+                }
+                for (let idx in event.data) {
+                    if (event.data[idx].event_rolled && !event.data[idx].event_ended)
+                        throw {
+                            errCode: 0x27,
+                            errMsg: "Still in event"
+                        }
+                    var index = event.data[idx].event_participates.indexOf(user.data._id)
+                    if (index !== -1)
+                        event.data[idx].event_participates.splice(index, 1)
+                    await events.doc(event.data[idx]._id).update({
+                        event_participates: event.data[idx].event_participates
+                    })
+                }
+                await users.doc(user.data._id).remove()
+            } catch (e) {
+                await transaction.rollback()
+                return e
+            }
+            
+            await transaction.commit()
+            return true
     }
 }
